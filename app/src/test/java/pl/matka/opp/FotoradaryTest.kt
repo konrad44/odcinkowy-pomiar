@@ -73,12 +73,12 @@ class FotoradaryTest {
     @Test
     fun trackerEmitujeFotoradarIMoznaWylaczyc() {
         var wlaczone = true
-        val t = Tracker(emptyList(), { 2 }, listOf(Fotoradar(p(1_000.0), 70, 0.0)), { wlaczone })
+        val t = Tracker(emptyList(), listOf(Fotoradar(p(1_000.0), 70, 0.0)), { wlaczone }) { 2 }
         val ev = (0..40).flatMap { i -> t.onFix(Fix(i * 1000L, p(i * 25.0).lat, lon0, v90, 0.0)) }
         assertEquals(1, ev.count { it is Zdarzenie.Fotoradar })
 
         wlaczone = false
-        val t2 = Tracker(emptyList(), { 2 }, listOf(Fotoradar(p(1_000.0), 70, 0.0)), { wlaczone })
+        val t2 = Tracker(emptyList(), listOf(Fotoradar(p(1_000.0), 70, 0.0)), { wlaczone }) { 2 }
         val ev2 = (0..40).flatMap { i -> t2.onFix(Fix(i * 1000L, p(i * 25.0).lat, lon0, v90, 0.0)) }
         assertTrue(ev2.none { it is Zdarzenie.Fotoradar })
     }

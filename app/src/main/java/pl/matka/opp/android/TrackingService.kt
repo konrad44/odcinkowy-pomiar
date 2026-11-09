@@ -94,7 +94,7 @@ class TrackingService : Service(), LocationListener {
         repo = OdcinkiRepo(this)
         val dane = repo.wczytaj()
         liczbaOdcinkow = dane.odcinki.size
-        tracker = Tracker(dane.odcinki, { prefs.zapasKmh }, repo.wczytajFotoradary(), { prefs.fotoradary })
+        tracker = Tracker(dane.odcinki, repo.wczytajFotoradary(), { prefs.fotoradary }) { prefs.zapasKmh }
         wyspa = WyspaOverlay(this, prefs)
         glos = Powiadamiacz(this, prefs)
         utworzKanal(this)

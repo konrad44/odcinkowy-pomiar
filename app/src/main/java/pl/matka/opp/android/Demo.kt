@@ -83,7 +83,7 @@ object Demo {
         if (dziala) return
         val app = ctx.applicationContext
         val prefs = Prefs(app)
-        tracker = Tracker(listOf(odcinek), { prefs.zapasKmh }, listOf(fotoradar), { prefs.fotoradary })
+        tracker = Tracker(listOf(odcinek), listOf(fotoradar), { prefs.fotoradary }) { prefs.zapasKmh }
         wyspa = WyspaOverlay(app, prefs).also { it.pokaz() }
         glos = Powiadamiacz(app, prefs)
         pozycja = START_M

@@ -49,9 +49,9 @@ sealed interface Zdarzenie {
  */
 class Tracker(
     odcinki: List<Odcinek>,
-    private val zapasKmh: () -> Int,
     fotoradary: List<Fotoradar> = emptyList(),
     private val fotoradaryWlaczone: () -> Boolean = { true },
+    private val zapasKmh: () -> Int,
 ) {
     private val detektor = FotoradarDetektor(fotoradary)
 
