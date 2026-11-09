@@ -13,7 +13,7 @@ Dane: (c) OpenStreetMap contributors, ODbL.
 import json, math, time, urllib.request, urllib.parse, sys, os
 
 OVERPASS = "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
-UA = {"User-Agent": "matka-opp-builder"}
+UA = {"User-Agent": "odcinkowy-pomiar-builder"}
 
 def pobierz_relacje():
     if os.path.exists("opp_rel.json"):
@@ -70,7 +70,7 @@ for e in d['elements']:
         url=f"https://router.project-osrm.org/route/v1/driving/{A[1]},{A[0]};{B[1]},{B[0]}?overview=full&geometries=geojson&steps=true"
         for att in range(4):
             try:
-                cache[key]=json.load(urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'matka-opp-builder'}),timeout=60));break
+                cache[key]=json.load(urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'odcinkowy-pomiar-builder'}),timeout=60));break
             except Exception as ex:
                 print('retry',key,ex,file=sys.stderr);time.sleep(2**att)
         time.sleep(1.1)

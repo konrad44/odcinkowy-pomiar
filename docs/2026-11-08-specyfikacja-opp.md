@@ -1,4 +1,4 @@
-# Matka – asystent odcinkowego pomiaru prędkości (OPP)
+# Odcinkowy Pomiar Prędkości – asystent OPP
 
 Specyfikacja ustalona 2026-11-08. Aplikacja na Androida, tylko do użytku własnego (APK instalowany ręcznie).
 

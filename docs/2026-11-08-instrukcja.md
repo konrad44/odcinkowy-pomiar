@@ -1,16 +1,16 @@
-# Matka OPP – instalacja i użycie
+# Odcinkowy Pomiar Prędkości – instalacja i użycie
 
 ## Pobranie APK
 
-- **Z gałęzi roboczej:** GitHub → zakładka *Actions* → ostatni przebieg „Build APK” → sekcja *Artifacts* → `matka-opp-apk` (zip z `matka-opp.apk`). Wymaga zalogowania.
-- **Po scaleniu do `master`:** GitHub → *Releases* → „latest” → `matka-opp.apk` (można pobrać prosto na telefon).
+- **Z gałęzi roboczej:** GitHub → zakładka *Actions* → ostatni przebieg „Build APK” → sekcja *Artifacts* → `odcinkowy-pomiar-apk` (zip z `odcinkowy-pomiar.apk`). Wymaga zalogowania.
+- **Z `master`:** GitHub → *Releases* → „latest” → `odcinkowy-pomiar.apk` (można pobrać prosto na telefon).
 
 APK jest podpisany stałym kluczem (`app/matka.keystore`), więc kolejne wersje instalują się jako aktualizacja – bez odinstalowywania.
 
 ## Instalacja
 
-1. Otwórz pobrany `matka-opp.apk` na telefonie, zezwól przeglądarce/menedżerowi plików na instalację z nieznanych źródeł.
-2. Uruchom „Matka OPP” i w sekcji **Uprawnienia** nadaj wszystko, co ma ✗:
+1. Otwórz pobrany `odcinkowy-pomiar.apk` na telefonie, zezwól przeglądarce/menedżerowi plików na instalację z nieznanych źródeł.
+2. Uruchom „Odcinkowy Pomiar Prędkości” i w sekcji **Uprawnienia** nadaj wszystko, co ma ✗:
    - Lokalizacja (dokładna),
    - Lokalizacja w tle – w ustawieniach wybierz **„Zezwalaj zawsze”**,
    - Wyświetlanie nad innymi aplikacjami,

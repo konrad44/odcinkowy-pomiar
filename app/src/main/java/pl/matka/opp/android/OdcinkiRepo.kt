@@ -45,7 +45,7 @@ class OdcinkiRepo(private val ctx: Context) {
         val c = URL(URL_DANYCH).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000
         c.readTimeout = 30_000
-        c.setRequestProperty("User-Agent", "Matka-OPP")
+        c.setRequestProperty("User-Agent", "odcinkowy-pomiar")
         try {
             if (c.responseCode != 200) error("HTTP ${c.responseCode}")
             val txt = c.inputStream.bufferedReader().use { it.readText() }

@@ -25,12 +25,12 @@ jobs:
         run: ./gradlew --no-daemon testDebugUnitTest assembleRelease
 
       - name: Zmiana nazwy APK
-        run: cp app/build/outputs/apk/release/app-release.apk matka-opp.apk
+        run: cp app/build/outputs/apk/release/app-release.apk odcinkowy-pomiar.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: matka-opp-apk
-          path: matka-opp.apk
+          name: odcinkowy-pomiar-apk
+          path: odcinkowy-pomiar.apk
 
       # Na gałęzi master APK ląduje też w wydaniu "latest" – do pobrania z telefonu bez logowania.
       - name: Wydanie latest
@@ -38,6 +38,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Matka OPP – najnowsza wersja
-          files: matka-opp.apk
+          name: Odcinkowy Pomiar Prędkości – najnowsza wersja
+          files: odcinkowy-pomiar.apk
           make_latest: true

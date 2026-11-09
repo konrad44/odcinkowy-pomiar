@@ -84,7 +84,7 @@ class MainActivity : Activity() {
 
     private fun zbuduj() {
         root.removeAllViews()
-        naglowek("Matka – odcinkowy pomiar prędkości", 22f)
+        naglowek("Odcinkowy Pomiar Prędkości", 22f)
 
         // --- Start / stop ---
         val stan = if (TrackingService.dziala) "Działa" else "Zatrzymana"
