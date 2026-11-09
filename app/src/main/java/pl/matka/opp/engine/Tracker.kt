@@ -39,6 +39,8 @@ sealed interface Zdarzenie {
     /** Emitowane przy każdym przeliczeniu w kolorze czerwonym – powiadamiacz sam dławi częstotliwość. */
     data class ZaSzybko(val dozwolonaKmh: Int) : Zdarzenie
     data class Zjazd(val odcinek: Odcinek, val sredniaKmh: Int?, val zTrasy: Boolean) : Zdarzenie
+    /** Stały fotoradar przed autem. [limit] null = nieznany. */
+    data class Fotoradar(val dystansM: Int, val limit: Int?) : Zdarzenie
 }
 
 /**
@@ -48,7 +50,13 @@ sealed interface Zdarzenie {
 class Tracker(
     odcinki: List<Odcinek>,
     private val zapasKmh: () -> Int,
+    fotoradary: List<Fotoradar> = emptyList(),
+    private val fotoradaryWlaczone: () -> Boolean = { true },
 ) {
+    private val detektor = FotoradarDetektor(fotoradary)
+
+    fun ustawFotoradary(nowe: List<Fotoradar>) = detektor.ustaw(nowe)
+
     companion object {
         const val ZAPOWIEDZ_M = 500.0
         const val ZAPOWIEDZ_OKNO_M = 550.0
@@ -126,6 +134,7 @@ class Tracker(
         }
         if (v != null) predkoscMps = v
         if (k != null) kurs = k
+        if (fotoradaryWlaczone()) detektor.onFix(p, kurs, predkoscMps)?.let { ev.add(it) }
 
         val a = aktywny
         if (a != null) {

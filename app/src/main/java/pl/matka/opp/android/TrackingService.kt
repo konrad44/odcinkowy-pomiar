@@ -94,7 +94,7 @@ class TrackingService : Service(), LocationListener {
         repo = OdcinkiRepo(this)
         val dane = repo.wczytaj()
         liczbaOdcinkow = dane.odcinki.size
-        tracker = Tracker(dane.odcinki) { prefs.zapasKmh }
+        tracker = Tracker(dane.odcinki, { prefs.zapasKmh }, repo.wczytajFotoradary(), { prefs.fotoradary })
         wyspa = WyspaOverlay(this, prefs)
         glos = Powiadamiacz(this, prefs)
         utworzKanal(this)
@@ -217,7 +217,12 @@ class TrackingService : Service(), LocationListener {
         // Bez sieci każde połączenie z autem odpalałoby kolejny wątek – jeden naraz wystarczy.
         if (!aktualizacjaTrwa.compareAndSet(false, true)) return
         Thread {
-            val r = try { repo.aktualizuj() } finally { aktualizacjaTrwa.set(false) }
+            val r = try {
+                repo.aktualizujFotoradary()
+                    .onSuccess { nowe -> if (nowe) { val l = repo.wczytajFotoradary(); handler.post { tracker.ustawFotoradary(l) } } }
+                    .onFailure { Log.w(TAG, "Aktualizacja fotoradarów nieudana", it) }
+                repo.aktualizuj()
+            } finally { aktualizacjaTrwa.set(false) }
             r.getOrNull()?.let { nowe ->
                 handler.post {
                     if (tracker.ustawOdcinki(nowe.odcinki)) liczbaOdcinkow = nowe.odcinki.size

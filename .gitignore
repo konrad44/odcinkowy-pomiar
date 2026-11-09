@@ -80,3 +80,4 @@ local.properties
 *.aab
 .kotlin/
 captures/
+tools/.cache/

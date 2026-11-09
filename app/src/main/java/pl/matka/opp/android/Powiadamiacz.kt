@@ -106,6 +106,7 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
             "Odcinkowy pomiar, limit ${z.odcinek.limit}, ${km(z.odcinek.dlugoscM)}"
         }
         is Zdarzenie.ZaSzybko -> "Zwolnij, maksymalnie ${z.dozwolonaKmh}"
+        is Zdarzenie.Fotoradar -> "Fotoradar za ${z.dystansM} metrów" + (z.limit?.let { ", limit $it" } ?: "")
         is Zdarzenie.Zjazd -> when {
             z.zTrasy -> "Opuszczono odcinek"
             z.sredniaKmh != null -> "Koniec odcinka, średnia ${z.sredniaKmh}"
@@ -143,6 +144,8 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
             is Zdarzenie.Wjazd -> listOf(880 to 150, 0 to 80, 1320 to 200)
             is Zdarzenie.ZaSzybko -> listOf(1500 to 110, 0 to 70, 1500 to 110, 0 to 70, 1500 to 110)
             is Zdarzenie.Zjazd -> listOf(1320 to 150, 0 to 80, 880 to 220)
+            // Inny niż zapowiedź OPP: trzy szybkie niskie + długi, żeby rozróżnić na ucho.
+            is Zdarzenie.Fotoradar -> listOf(660 to 90, 0 to 50, 660 to 90, 0 to 50, 660 to 90, 0 to 80, 990 to 300)
         }
     )
 

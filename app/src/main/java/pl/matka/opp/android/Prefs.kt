@@ -15,6 +15,10 @@ class Prefs(ctx: Context) {
         get() = runCatching { Tryb.valueOf(sp.getString("tryb", Tryb.SYGNAL.name)!!) }.getOrDefault(Tryb.SYGNAL)
         set(v) = sp.edit().putString("tryb", v.name).apply()
 
+    var fotoradary: Boolean
+        get() = sp.getBoolean("foto", true)
+        set(v) = sp.edit().putBoolean("foto", v).apply()
+
     /** Adresy MAC urządzeń Bluetooth auta. */
     var urzadzenia: Set<String>
         get() = sp.getStringSet("bt", emptySet())!!.toSet()

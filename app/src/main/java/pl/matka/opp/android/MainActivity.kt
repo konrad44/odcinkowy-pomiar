@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        Demo.sluchacz = null
         glosTest?.zamknij()
         super.onDestroy()
     }
@@ -107,6 +108,22 @@ class MainActivity : Activity() {
                 root.postDelayed({ zbuduj() }, 300)
             },
         )
+
+        // --- Demo ---
+        sekcja("Tryb demo")
+        tekst("Symulowany przejazd bez auta i GPS (czas ×${Demo.PRZYSPIESZENIE}): fotoradar, zapowiedź, odcinek z " +
+            "przekroczeniem i odrabianiem średniej, utrata GPS, podsumowanie. Wyspa i dźwięki jak w jeździe – " +
+            "możesz wyjść do ekranu głównego, demo leci dalej (~1,5 min).", 13f)
+        val demoStan = TextView(this).apply { textSize = 13f; typeface = Typeface.MONOSPACE }
+        if (Demo.dziala) {
+            root.addView(przycisk("Zatrzymaj demo") { Demo.stop() })
+        } else {
+            root.addView(przycisk("Uruchom demo") { uruchomDemo() })
+        }
+        root.addView(demoStan)
+        Demo.sluchacz = { t ->
+            if (t == null) runOnUiThread { zbuduj() } else demoStan.text = t
+        }
 
         // --- Uprawnienia ---
         sekcja("Uprawnienia")
@@ -211,6 +228,11 @@ class MainActivity : Activity() {
             })
         }
         root.addView(rg)
+        root.addView(CheckBox(this).apply {
+            text = "Ostrzegaj przed fotoradarami (stałe, z OpenStreetMap)"
+            isChecked = prefs.fotoradary
+            setOnCheckedChangeListener { _, on -> prefs.fotoradary = on }
+        })
         root.addView(przycisk("Test dźwięku") {
             val g = glosTest ?: Powiadamiacz(this, prefs).also { glosTest = it }
             // test() sam poczeka na gotowość silnika mowy
@@ -226,10 +248,12 @@ class MainActivity : Activity() {
         val spr = prefs.ostatnieSprawdzenie.let {
             if (it == 0L) "nigdy" else SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it))
         }
-        tekst("${dane.odcinki.size} odcinków (oba kierunki osobno), dane z ${dane.aktualizacja}.\nOstatnie sprawdzenie aktualizacji: $spr", 13f)
+        val foto = runCatching { repo.wczytajFotoradary().size }.getOrDefault(0)
+        tekst("${dane.odcinki.size} odcinków (oba kierunki osobno), dane z ${dane.aktualizacja}. $foto fotoradarów.\nOstatnie sprawdzenie aktualizacji: $spr", 13f)
         root.addView(przycisk("Sprawdź aktualizację") {
             toast("Sprawdzam…")
             Thread {
+                repo.aktualizujFotoradary()
                 val r = repo.aktualizuj()
                 runOnUiThread {
                     r.onSuccess { toast(if (it == null) "Brak zmian" else "Pobrano ${it.odcinki.size} odcinków") }
@@ -265,7 +289,19 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun uruchomDemo() {
+        if (!Settings.canDrawOverlays(this)) {
+            toast("Demo potrzebuje uprawnienia „Wyświetlanie nad innymi aplikacjami”")
+            return
+        }
+        // Prawdziwa usługa pokazałaby drugą wyspę – na czas demo ją wyłączamy.
+        if (TrackingService.dziala) TrackingService.wyslij(this, TrackingService.ACTION_STOP)
+        Demo.start(this)
+        zbuduj()
+    }
+
     private fun uruchom() {
+        if (Demo.dziala) Demo.stop()
         if (!ma(Manifest.permission.ACCESS_FINE_LOCATION)) {
             toast("Nadaj uprawnienie do lokalizacji")
             return
