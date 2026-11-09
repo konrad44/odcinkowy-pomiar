@@ -94,6 +94,7 @@ for e in d['elements']:
     flags=[]
     if snapA>40 or snapB>40: flags.append(f'snap {snapA:.0f}/{snapB:.0f}')
     if L>straight*1.6+300: flags.append(f'detour {L:.0f} vs {straight:.0f}')
+    if L<500: flags.append(f'za krótki {L:.0f} m')
     if off and abs(L-off)/off>0.15: flags.append(f'len {L:.0f} vs tag {off:.0f}')
     if flags: bad.append((e['id'],t.get('ref'),flags));continue
     sp=dp(geom,4)

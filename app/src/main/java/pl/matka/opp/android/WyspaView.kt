@@ -86,7 +86,7 @@ class WyspaView(
                 rysujTlo(c)
                 rysujZnak(c, pad, pad, st.odcinek.limit)
                 if (st.nieznanyWjazd) {
-                    rysujTekst(c, pad + s + gap, listOf("Brak danych" to 13f, "od wjazdu –" to 13f, "trzymaj limit" to 13f))
+                    rysujTekst(c, pad + s + gap, listOf("Brak danych" to 14f, "od wjazdu –" to 14f, "trzymaj limit" to 14f))
                 } else {
                     rysujPierscien(c, pad + s + gap, pad, st)
                 }
@@ -152,18 +152,12 @@ class WyspaView(
         stroke.strokeCap = Paint.Cap.BUTT
 
         txt.color = col
-        if (st.przekroczona) {
-            txt.textSize = dp(11f)
-            c.drawText("ŚREDNIA", cx, cy - dp(2f), txt)
-            c.drawText("PRZEKR.", cx, cy + dp(11f), txt)
-            return
-        }
         val v = st.dozwolonaKmh?.toString() ?: "—"
         txt.textSize = if (v.length >= 3) s * 0.34f else s * 0.42f
         c.drawText(v, cx, cy - (txt.descent() + txt.ascent()) / 2, txt)
         if (st.szacowane) {
-            txt.textSize = dp(9f)
-            c.drawText("≈ GPS", cx, cy + r - dp(12f), txt)
+            txt.textSize = dp(11f)
+            c.drawText("≈ GPS", cx, cy + r - dp(13f), txt)
         }
     }
 
@@ -200,6 +194,7 @@ class WyspaView(
                 }
             }
             MotionEvent.ACTION_UP -> if (ciagniecie) onDragEnd() else onTap()
+            MotionEvent.ACTION_CANCEL -> if (ciagniecie) onDragEnd()
         }
         return true
     }

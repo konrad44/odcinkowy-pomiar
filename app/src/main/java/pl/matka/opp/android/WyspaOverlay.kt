@@ -44,6 +44,8 @@ class WyspaOverlay(private val ctx: Context, private val prefs: Prefs) {
     }
 
     fun ustaw(stan: StanWyspy) {
+        // Uprawnienie cofnięte w trakcie – system usunął okno; po ponownym nadaniu pokażemy je od nowa.
+        if (view != null && !Settings.canDrawOverlays(ctx)) ukryj()
         if (view == null) pokaz()
         view?.stan = stan
     }

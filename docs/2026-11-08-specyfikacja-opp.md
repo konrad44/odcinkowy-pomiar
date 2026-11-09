@@ -68,7 +68,7 @@ Każdy odcinek jest kierunkowy (dwa kierunki = dwa wpisy).
 - `t_uplyw` – czas od wjazdu.
 - `d_pozostaly` – dystans od bieżącego rzutu na polilinię do końca.
 - **Prędkość dozwolona** = `d_pozostaly / (t_min − t_uplyw)`.
-  - Jeśli `t_min − t_uplyw ≤ 0` przy `d_pozostaly > 0` – średnia już przekroczona: komunikat „Średnia przekroczona”, kolor czerwony.
+  - Jeśli `t_min − t_uplyw ≤ 0` – minął minimalny czas przejazdu, więc średnia na pewno zmieści się w limicie (np. po korku): dozwolona = maksimum (199), kolor niebieski. Stanu „średnia przekroczona” nie ma – zawsze można zwolnić.
 - **Zapas** – ustawiany w opcjach, domyślnie 2 km/h.
 - Wartość może być wyższa niż limit – wtedy jest pokazywana na niebiesko (ostrzeżenie: chwilowy limit nadal obowiązuje).
 

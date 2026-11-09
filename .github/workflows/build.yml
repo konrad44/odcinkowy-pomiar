@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Dwa szybkie pushe nie mogą się ścigać o wydanie "latest" (starszy build nadpisałby nowszy).
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,6 +38,13 @@ jobs:
           path: odcinkowy-pomiar.apk
 
       # Na gałęzi master APK ląduje też w wydaniu "latest" – do pobrania z telefonu bez logowania.
+      # softprops nie przesuwa istniejącego tagu – robimy to sami, żeby "latest" wskazywał bieżący commit.
+      - name: Przesuń tag latest
+        if: github.ref == 'refs/heads/master'
+        run: |
+          git tag -f latest
+          git push -f origin refs/tags/latest
+
       - name: Wydanie latest
         if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
@@ -41,3 +53,4 @@ jobs:
           name: Odcinkowy Pomiar Prędkości – najnowsza wersja
           files: odcinkowy-pomiar.apk
           make_latest: true
+          body: "Build ${{ github.run_number }} z commita ${{ github.sha }}"

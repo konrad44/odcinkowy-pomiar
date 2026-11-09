@@ -13,8 +13,10 @@ android {
         applicationId = "pl.matka.opp"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2"
+        // W CI numer buildu rośnie sam (100+ > dawne 3), lokalnie zostaje 3.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = if (build != null) 100 + build else 3
+        versionName = "1.3" + (build?.let { ".$it" } ?: "-local")
     }
 
     // Stały klucz w repo, żeby kolejne APK z CI instalowały się jako aktualizacja

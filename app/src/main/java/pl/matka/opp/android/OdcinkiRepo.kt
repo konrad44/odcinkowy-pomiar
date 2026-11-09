@@ -21,8 +21,10 @@ class OdcinkiRepo(private val ctx: Context) {
     private val prefs = Prefs(ctx)
     private val plik get() = File(ctx.filesDir, "odcinki.json")
 
+    private fun tekstWbudowany() = ctx.assets.open("odcinki.json").bufferedReader().use { it.readText() }
+
     fun wczytaj(): OdcinkiDane {
-        val wbudowane = OdcinkiParser.parse(ctx.assets.open("odcinki.json").bufferedReader().use { it.readText() })
+        val wbudowane = OdcinkiParser.parse(tekstWbudowany())
         val f = plik
         if (f.exists()) {
             runCatching { OdcinkiParser.parse(f.readText()) }
@@ -41,6 +43,7 @@ class OdcinkiRepo(private val ctx: Context) {
      * Pobiera plik z repo. Wołać poza wątkiem głównym.
      * @return nowe dane, jeśli się zmieniły; null gdy bez zmian lub błąd.
      */
+    @Synchronized
     fun aktualizuj(): Result<OdcinkiDane?> = runCatching {
         val c = URL(URL_DANYCH).openConnection() as HttpURLConnection
         c.connectTimeout = 15_000
@@ -50,19 +53,36 @@ class OdcinkiRepo(private val ctx: Context) {
             if (c.responseCode != 200) error("HTTP ${c.responseCode}")
             val txt = c.inputStream.bufferedReader().use { it.readText() }
             val nowe = OdcinkiParser.parse(txt)
-            if (nowe.odcinki.isEmpty()) error("Pusta lista odcinków")
-            prefs.ostatnieSprawdzenie = System.currentTimeMillis()
-            val obecne = wczytaj()
-            if (nowe.aktualizacja == obecne.aktualizacja && nowe.odcinki.size == obecne.odcinki.size) {
-                null
-            } else {
-                val tmp = File(ctx.filesDir, "odcinki.json.tmp")
-                tmp.writeText(txt)
-                if (!tmp.renameTo(plik)) error("Nie udało się zapisać pliku")
-                nowe
+            val wbudowaneTxt = tekstWbudowany()
+            val wbudowane = OdcinkiParser.parse(wbudowaneTxt)
+            sprawdz(nowe, wbudowane)
+            val lokalnyTxt = plik.takeIf { it.exists() }?.let { runCatching { it.readText() }.getOrNull() }
+            val wynik = when {
+                // Ten sam plik co obecny – porównujemy całą treść, nie tylko datę i liczbę odcinków.
+                txt == lokalnyTxt || (lokalnyTxt == null && txt == wbudowaneTxt) -> null
+                // Starszy niż wbudowany w APK (np. nieodświeżony cache serwera) – nie cofamy danych.
+                nowe.aktualizacja < wbudowane.aktualizacja -> null
+                else -> {
+                    val tmp = File(ctx.filesDir, "odcinki.json.tmp")
+                    tmp.writeText(txt)
+                    if (!tmp.renameTo(plik)) error("Nie udało się zapisać pliku")
+                    nowe
+                }
             }
+            prefs.ostatnieSprawdzenie = System.currentTimeMillis()
+            wynik
         } finally {
             c.disconnect()
         }
+    }
+
+    /** Odrzuca pobrany plik, który wygląda na zepsuty – zanim nadpisze dobrą kopię. */
+    private fun sprawdz(nowe: OdcinkiDane, wbudowane: OdcinkiDane) {
+        if (nowe.wersja > 1) error("Nieobsługiwana wersja danych ${nowe.wersja} – zaktualizuj aplikację")
+        if (nowe.odcinki.size < wbudowane.odcinki.size / 2) error("Podejrzanie mało odcinków: ${nowe.odcinki.size}")
+        val pozaPolska = nowe.odcinki.count { o ->
+            o.trasa.points.any { it.lat !in 48.9..55.0 || it.lon !in 14.0..24.2 }
+        }
+        if (pozaPolska > 0) error("$pozaPolska odcinków poza Polską – zły format danych")
     }
 }

@@ -8,7 +8,7 @@ object Calc {
 
     /**
      * Maksymalna prędkość (km/h) na resztę odcinka, żeby średnia nie przekroczyła (limit − zapas).
-     * @return null, gdy średnia jest już nie do uratowania (minął minimalny czas przejazdu).
+     * Gdy minął już minimalny czas przejazdu, średnia na pewno zmieści się w limicie – zwraca [MAX_KMH].
      */
     fun dozwolonaKmh(
         dlugoscM: Double,
@@ -16,12 +16,12 @@ object Calc {
         zapasKmh: Int,
         uplynaloS: Double,
         pozostaloM: Double,
-    ): Double? {
+    ): Double {
         if (pozostaloM <= 0.0) return MAX_KMH.toDouble()
         val vEff = (limitKmh - zapasKmh).coerceAtLeast(5) / 3.6
         val tMin = dlugoscM / vEff
         val tLeft = tMin - uplynaloS
-        if (tLeft <= 0.0) return null
+        if (tLeft <= 0.0) return MAX_KMH.toDouble()
         return (pozostaloM / tLeft * 3.6).coerceAtMost(MAX_KMH.toDouble())
     }
 

@@ -28,6 +28,16 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("wy", 300)
         set(v) = sp.edit().putInt("wy", v).apply()
 
+    /** Kiedy rozłączono z autem (System.currentTimeMillis); 0 = połączone / uruchomione ręcznie. */
+    var rozlaczonoMs: Long
+        get() = sp.getLong("rozl", 0L)
+        set(v) = sp.edit().putLong("rozl", v).apply()
+
+    /** Czy już raz pytano o lokalizację w tle (potem Android przestaje pokazywać okno). */
+    var pytanoOTlo: Boolean
+        get() = sp.getBoolean("tlo", false)
+        set(v) = sp.edit().putBoolean("tlo", v).apply()
+
     /** Kiedy ostatnio sprawdzano aktualizację odcinków (System.currentTimeMillis). */
     var ostatnieSprawdzenie: Long
         get() = sp.getLong("upd", 0L)

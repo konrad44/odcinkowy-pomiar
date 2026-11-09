@@ -20,9 +20,8 @@ sealed interface StanWyspy {
     data class Zapowiedz(val odcinek: Odcinek, val dystansM: Int) : StanWyspy
     data class NaOdcinku(
         val odcinek: Odcinek,
-        /** null gdy nieznany wjazd albo średnia przekroczona. */
+        /** null gdy nieznany wjazd. */
         val dozwolonaKmh: Int?,
-        val przekroczona: Boolean,
         val nieznanyWjazd: Boolean,
         val szacowane: Boolean,
         /** 0..1 – przejechana część odcinka. */
@@ -38,7 +37,7 @@ sealed interface Zdarzenie {
     data class Zapowiedz(val odcinek: Odcinek, val dystansM: Int) : Zdarzenie
     data class Wjazd(val odcinek: Odcinek, val nieznany: Boolean) : Zdarzenie
     /** Emitowane przy każdym przeliczeniu w kolorze czerwonym – powiadamiacz sam dławi częstotliwość. */
-    data class ZaSzybko(val dozwolonaKmh: Int?) : Zdarzenie
+    data class ZaSzybko(val dozwolonaKmh: Int) : Zdarzenie
     data class Zjazd(val odcinek: Odcinek, val sredniaKmh: Int?, val zTrasy: Boolean) : Zdarzenie
 }
 
@@ -61,6 +60,12 @@ class Tracker(
         const val GPS_BRAK_MS = 5_000L
         const val PODSUMOWANIE_MS = 10_000L
         const val MIN_PREDKOSC_NIEZNANY_MPS = 20 / 3.6
+        /** Bez GPS nie kończymy odcinka na szacunku – dopiero gdy brak sygnału trwa tyle po szacowanym końcu. */
+        const val KONIEC_BEZ_GPS_MS = 60_000L
+        /** Jak długo pamiętamy zapowiedź do odtworzenia czasu wjazdu. */
+        const val PAMIEC_ZAPOWIEDZI_MS = 15_000L
+        const val KAT_ZAWROCENIA = 135.0
+        const val COFNIECIE_M = 100.0
     }
 
     private class Aktywny(
@@ -70,13 +75,18 @@ class Tracker(
         var along: Double,
         var alongMs: Long,
         var pozaTrasaOd: Long? = null,
-    )
+    ) {
+        var maxAlong = along
+        var wstecz = 0
+    }
 
     private var odcinki: List<Odcinek> = odcinki
     private var aktywny: Aktywny? = null
     private var zapowiadany: Odcinek? = null
     private var zapowiadanyDystans = 0.0
     private val zapowiedziane = HashSet<String>()
+    /** Ostatnio zapowiedziany odcinek i czas – nie kasowany przez pojedynczy zły odczyt. */
+    private var ostatnioZapowiedziany: Pair<String, Long>? = null
     private var podsumowanie: StanWyspy.Podsumowanie? = null
     private var podsumowanieDo = 0L
 
@@ -101,6 +111,8 @@ class Tracker(
         val ev = ArrayList<Zdarzenie>()
         val p = LatLon(fix.lat, fix.lon)
         val prev = ostatniFix
+        // Odczyt starszy niż poprzedni (np. z pamięci podręcznej) – pomijamy.
+        if (prev != null && fix.timeMs <= prev.timeMs) return emptyList()
 
         // Prędkość i kurs – z GPS, a gdy brak, z dwóch ostatnich pozycji.
         var v = fix.speedMps
@@ -117,7 +129,7 @@ class Tracker(
 
         val a = aktywny
         if (a != null) {
-            obsluzAktywny(a, fix, p, ev)
+            if (obsluzAktywny(a, fix, p, ev)) wykryj(fix, p, prev, ev)
         } else {
             wykryj(fix, p, prev, ev)
         }
@@ -131,21 +143,23 @@ class Tracker(
         val a = aktywny
         val lf = ostatniFix
         if (a != null && (lf == null || nowMs - lf.timeMs > GPS_STARY_MS)) {
-            // Brak GPS – szacujemy, czy już nie minęliśmy końca.
-            val est = a.along + (predkoscMps ?: 0.0) * (nowMs - a.alongMs) / 1000.0
-            if (est >= a.odcinek.trasa.length) {
-                val koniecMs = a.alongMs + (((a.odcinek.trasa.length - a.along) /
-                    max(predkoscMps ?: 0.1, 0.1)) * 1000).toLong()
-                zakoncz(a, koniecMs, nowMs, ev)
-            }
+            // Brak GPS – na samym szacunku nie kończymy (może to być korek w tunelu).
+            // Dopiero długo po szacowanym końcu zamykamy odcinek, bez wymyślonej średniej.
+            val koniecSzac = a.alongMs + (((a.odcinek.trasa.length - a.along) /
+                max(predkoscMps ?: 0.1, 0.1)) * 1000).toLong()
+            if (nowMs - koniecSzac >= KONIEC_BEZ_GPS_MS) zakoncz(a, null, nowMs, ev)
         }
         przelicz(nowMs, ev)
         return ev
     }
 
-    private fun obsluzAktywny(a: Aktywny, fix: Fix, p: LatLon, ev: MutableList<Zdarzenie>) {
+    /** @return true, gdy odcinek zakończono przez zawrócenie – trzeba od razu szukać nowego. */
+    private fun obsluzAktywny(a: Aktywny, fix: Fix, p: LatLon, ev: MutableList<Zdarzenie>): Boolean {
         val trasa = a.odcinek.trasa
-        val pr = trasa.project(p, a.along)
+        // Po luce w GPS szukamy wokół szacowanej pozycji, a gdy daleko – na całej trasie.
+        val hint = a.along + (predkoscMps ?: 0.0) * (fix.timeMs - a.alongMs) / 1000.0
+        var pr = trasa.project(p, hint)
+        if (pr.crossTrack > ZJAZD_CROSS_M) pr = trasa.project(p, null)
         if (pr.crossTrack > ZJAZD_CROSS_M) {
             val od = a.pozaTrasaOd ?: fix.timeMs.also { a.pozaTrasaOd = it }
             if (fix.timeMs - od >= ZJAZD_CZAS_MS) {
@@ -153,10 +167,19 @@ class Tracker(
                 zapowiedziane.add(a.odcinek.id)
                 ev.add(Zdarzenie.Zjazd(a.odcinek, null, zTrasy = true))
             }
-            return
+            return false
         }
         a.pozaTrasaOd = null
         val along = pr.along.coerceAtLeast(0.0)
+        // Zawrócenie: kurs przeciwny do trasy przez kilka odczytów albo wyraźne cofnięcie się.
+        val k = kurs
+        a.wstecz = if (k != null && Geo.angleDiff(k, pr.segmentBearing) > KAT_ZAWROCENIA) a.wstecz + 1 else 0
+        if (a.wstecz >= 3 || along < a.maxAlong - COFNIECIE_M) {
+            aktywny = null
+            zapowiedziane.add(a.odcinek.id)
+            ev.add(Zdarzenie.Zjazd(a.odcinek, null, zTrasy = true))
+            return true
+        }
         if (along >= trasa.length) {
             // Interpolacja momentu przejechania punktu końcowego.
             val dAlong = along - a.along
@@ -164,16 +187,19 @@ class Tracker(
                 a.alongMs + ((trasa.length - a.along) / dAlong * (fix.timeMs - a.alongMs)).toLong()
             } else fix.timeMs
             zakoncz(a, koniecMs, fix.timeMs, ev)
-            return
+            return false
         }
         a.along = along
         a.alongMs = fix.timeMs
+        if (along > a.maxAlong) a.maxAlong = along
+        return false
     }
 
-    private fun zakoncz(a: Aktywny, koniecMs: Long, nowMs: Long, ev: MutableList<Zdarzenie>) {
+    /** @param koniecMs null = moment wyjazdu nieznany (brak GPS) – bez średniej. */
+    private fun zakoncz(a: Aktywny, koniecMs: Long?, nowMs: Long, ev: MutableList<Zdarzenie>) {
         aktywny = null
         zapowiedziane.add(a.odcinek.id)
-        val sr = a.wjazdMs?.let { w ->
+        val sr = if (koniecMs == null) null else a.wjazdMs?.let { w ->
             val s = (koniecMs - w) / 1000.0
             if (s > 0) (a.odcinek.dlugoscM / s * 3.6).roundToInt() else null
         }
@@ -204,7 +230,9 @@ class Tracker(
                     }
                 }
                 val v = predkoscMps ?: 0.0
-                if (wjazdMs == null && zapowiadany?.id == o.id && v > 1.0 && pr.along <= v * 6 + 50) {
+                val zap = ostatnioZapowiedziany
+                val zapId = if (zap != null && fix.timeMs - zap.second <= PAMIEC_ZAPOWIEDZI_MS) zap.first else null
+                if (wjazdMs == null && zapId == o.id && v > 1.0 && pr.along <= v * 6 + 50) {
                     // Krótka luka w GPS tuż przy bramce – odtwarzamy czas wjazdu z prędkości.
                     wjazdMs = fix.timeMs - (pr.along / v * 1000).toLong()
                 }
@@ -212,6 +240,7 @@ class Tracker(
 
                 aktywny = Aktywny(o, wjazdMs, pr.along, fix.timeMs)
                 zapowiadany = null
+                ostatnioZapowiedziany = null
                 podsumowanie = null
                 ev.add(Zdarzenie.Wjazd(o, nieznany = wjazdMs == null))
                 return
@@ -243,6 +272,7 @@ class Tracker(
         if (z != null) {
             zapowiadany = z
             zapowiadanyDystans = najblizszaDyst
+            ostatnioZapowiedziany = z.id to fix.timeMs
             if (zapowiedziane.add(z.id)) {
                 ev.add(Zdarzenie.Zapowiedz(z, roundTo50(najblizszaDyst)))
             }
@@ -263,28 +293,26 @@ class Tracker(
             } else a.along
             val alongC = along.coerceIn(0.0, trasa.length)
             val pozostaloOficjalnie = a.odcinek.dlugoscM * (trasa.length - alongC) / trasa.length
-            var dozw: Double? = null
-            var przekr = false
-            if (a.wjazdMs != null) {
-                dozw = Calc.dozwolonaKmh(
+            val dozw: Double? = a.wjazdMs?.let { w ->
+                Calc.dozwolonaKmh(
                     a.odcinek.dlugoscM, a.odcinek.limit, zapasKmh(),
-                    (nowMs - a.wjazdMs) / 1000.0, pozostaloOficjalnie,
+                    (nowMs - w) / 1000.0, pozostaloOficjalnie,
                 )
-                przekr = dozw == null
             }
+            // Kolor liczony z tej samej (obciętej) wartości, którą widzi kierowca.
+            val dozwInt = dozw?.toInt()
             val kolor = if (a.wjazdMs == null) Kolor.SZARY
-            else Calc.kolor(predkoscMps?.times(3.6), dozw, a.odcinek.limit, szac)
+            else Calc.kolor(predkoscMps?.times(3.6), dozwInt?.toDouble(), a.odcinek.limit, szac)
             stan = StanWyspy.NaOdcinku(
                 odcinek = a.odcinek,
-                dozwolonaKmh = dozw?.toInt(),
-                przekroczona = przekr,
+                dozwolonaKmh = dozwInt,
                 nieznanyWjazd = a.wjazdMs == null,
                 szacowane = szac,
                 postep = (alongC / trasa.length).toFloat(),
                 pozostaloM = pozostaloOficjalnie.roundToInt(),
                 kolor = kolor,
             )
-            if (kolor == Kolor.CZERWONY) ev.add(Zdarzenie.ZaSzybko(dozw?.toInt()))
+            if (kolor == Kolor.CZERWONY && dozwInt != null) ev.add(Zdarzenie.ZaSzybko(dozwInt))
             return
         }
         val ps = podsumowanie

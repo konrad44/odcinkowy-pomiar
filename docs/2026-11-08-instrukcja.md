@@ -27,7 +27,7 @@ APK jest podpisany stałym kluczem (`app/matka.keystore`), więc kolejne wersje 
 - **Na odcinku** – po lewej znak z limitem, po prawej maksymalna prędkość, z jaką możesz jechać do końca odcinka. Pierścień wokół liczby pokazuje przejechaną część odcinka.
   - zielony – jedziesz nie szybciej niż dozwolona,
   - żółty – szybciej o 1–5 km/h,
-  - czerwony – szybciej o >5 km/h (sygnał co 10 s) albo „ŚREDNIA PRZEKR.”,
+  - czerwony – szybciej o >5 km/h (sygnał co 10 s, głos co 30 s),
   - niebieski – dozwolona jest wyższa niż limit (chwilowy limit nadal obowiązuje!),
   - szary „≈ GPS” – brak sygnału, wartość szacowana z ostatniej prędkości.
 - Jeśli aplikacja nie złapała wjazdu (np. wystartowała w trakcie odcinka) – „Brak danych od wjazdu – trzymaj limit”.

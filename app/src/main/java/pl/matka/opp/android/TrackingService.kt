@@ -27,6 +27,7 @@ import pl.matka.opp.engine.Fix
 import pl.matka.opp.engine.StanWyspy
 import pl.matka.opp.engine.Tracker
 import pl.matka.opp.engine.Zdarzenie
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** Usługa pierwszego planu: GPS → silnik → wyspa + dźwięk. */
 class TrackingService : Service(), LocationListener {
@@ -71,6 +72,8 @@ class TrackingService : Service(), LocationListener {
     private var lm: LocationManager? = null
     private var liczbaOdcinkow = 0
     private var ostatniTekst = ""
+    private var naPierwszymPlanie = false
+    private val aktualizacjaTrwa = AtomicBoolean(false)
 
     private val tick = object : Runnable {
         override fun run() {
@@ -78,7 +81,10 @@ class TrackingService : Service(), LocationListener {
             handler.postDelayed(this, 1000)
         }
     }
-    private val zatrzymaj = Runnable { stopSelf() }
+    private val zatrzymaj = Runnable {
+        prefs.rozlaczonoMs = 0L
+        stopSelf()
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -95,21 +101,55 @@ class TrackingService : Service(), LocationListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        try {
-            startForegroundCompat(powiadomienie("Czuwam – $liczbaOdcinkow odcinków"))
-        } catch (e: Exception) {
-            Log.e(TAG, "Nie można uruchomić usługi pierwszego planu", e)
+        val action = intent?.action
+        if (action == ACTION_STOP) {
+            prefs.rozlaczonoMs = 0L
             stopSelf()
             return START_NOT_STICKY
         }
-        dziala = true
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopSelf()
-                return START_NOT_STICKY
+        // startForeground tylko przy starcie – STOP/BT_OFF przychodzą zwykłym startService i nie mogą
+        // ponownie przechodzić kontroli typu „location” z tła (Android 14+).
+        if (!naPierwszymPlanie || action == ACTION_START || action == ACTION_BT_POLACZONO) {
+            try {
+                startForegroundCompat(powiadomienie("Czuwam – $liczbaOdcinkow odcinków"))
+                naPierwszymPlanie = true
+            } catch (e: Exception) {
+                Log.e(TAG, "Nie można uruchomić usługi pierwszego planu", e)
+                if (!naPierwszymPlanie) {
+                    BluetoothReceiver.powiadomOStarcie(
+                        this, BluetoothReceiver.brakiDoAutostartu(this).joinToString(", ").ifEmpty { null },
+                    )
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
             }
-            ACTION_BT_ROZLACZONO -> handler.postDelayed(zatrzymaj, STOP_PO_ROZLACZENIU_MS)
-            else -> handler.removeCallbacks(zatrzymaj)
+        }
+        dziala = true
+        getSystemService(NotificationManager::class.java).cancel(BluetoothReceiver.NOTIF_START_ID)
+        when (action) {
+            ACTION_BT_ROZLACZONO -> {
+                prefs.rozlaczonoMs = System.currentTimeMillis()
+                handler.removeCallbacks(zatrzymaj)
+                handler.postDelayed(zatrzymaj, STOP_PO_ROZLACZENIU_MS)
+            }
+            null -> {
+                // Restart przez system (START_STICKY) – timer z Handlera przepadł razem z procesem.
+                val rozl = prefs.rozlaczonoMs
+                if (rozl > 0) {
+                    val zostalo = STOP_PO_ROZLACZENIU_MS - (System.currentTimeMillis() - rozl)
+                    if (zostalo <= 0) {
+                        prefs.rozlaczonoMs = 0L
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
+                    handler.removeCallbacks(zatrzymaj)
+                    handler.postDelayed(zatrzymaj, zostalo)
+                }
+            }
+            else -> {
+                prefs.rozlaczonoMs = 0L
+                handler.removeCallbacks(zatrzymaj)
+            }
         }
         startGps()
         wyspa.pokaz()
@@ -174,8 +214,10 @@ class TrackingService : Service(), LocationListener {
 
     private fun sprawdzAktualizacje() {
         if (!repo.czyPora()) return
+        // Bez sieci każde połączenie z autem odpalałoby kolejny wątek – jeden naraz wystarczy.
+        if (!aktualizacjaTrwa.compareAndSet(false, true)) return
         Thread {
-            val r = repo.aktualizuj()
+            val r = try { repo.aktualizuj() } finally { aktualizacjaTrwa.set(false) }
             r.getOrNull()?.let { nowe ->
                 handler.post {
                     if (tracker.ustawOdcinki(nowe.odcinki)) liczbaOdcinkow = nowe.odcinki.size
@@ -210,6 +252,7 @@ class TrackingService : Service(), LocationListener {
 
     override fun onDestroy() {
         dziala = false
+        naPierwszymPlanie = false
         handler.removeCallbacksAndMessages(null)
         lm?.removeUpdates(this)
         lm = null

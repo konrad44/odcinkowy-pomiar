@@ -18,6 +18,8 @@ class Odcinek(
 class OdcinkiDane(val wersja: Int, val aktualizacja: String, val odcinki: List<Odcinek>)
 
 object OdcinkiParser {
+    const val MIN_DLUGOSC_M = 500.0
+
     fun parse(json: String): OdcinkiDane {
         val root = JSONObject(json)
         val arr = root.getJSONArray("odcinki")
@@ -34,7 +36,10 @@ object OdcinkiParser {
             val poly = Polyline(pts)
             val limit = o.getInt("limit")
             if (limit <= 0) continue
+            // Zdegenerowana lub podejrzanie krótka trasa – pomijamy (chroni też przed dzieleniem przez zero).
+            if (poly.length < MIN_DLUGOSC_M) continue
             val dl = o.optDouble("dlugosc_m", Double.NaN).let { if (it.isNaN() || it <= 0) poly.length else it }
+            if (dl / poly.length !in 0.8..1.25) continue
             list.add(
                 Odcinek(
                     id = o.getString("id"),

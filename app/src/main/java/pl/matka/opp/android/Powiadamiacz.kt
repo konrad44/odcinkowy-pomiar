@@ -30,38 +30,71 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
         .build()
 
     private var tts: TextToSpeech? = TextToSpeech(ctx.applicationContext, this)
-    private var ttsGotowy = false
+    /** Silnik gotowy i ma polski głos. Bez polskiego głosu grają sygnały. */
+    @Volatile private var ttsGotowy = false
+    @Volatile private var ttsZainicjowany = false
+    /** Tekst testu zamówiony przed końcem inicjalizacji TTS. */
+    private var czekajacyTest = false
     private var ostatnieOstrzezenie = 0L
+    /** Ile dźwięków/komunikatów trzyma teraz fokus audio (ściszenie muzyki). Tylko wątek główny. */
+    private var aktywne = 0
 
     override fun onInit(status: Int) {
-        val t = tts ?: return
-        if (status == TextToSpeech.SUCCESS) {
-            t.language = Locale("pl", "PL")
-            t.setAudioAttributes(attrs)
-            t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(id: String?) {}
-                override fun onDone(id: String?) { am.abandonAudioFocusRequest(focus) }
-                @Deprecated("Deprecated in Java")
-                override fun onError(id: String?) { am.abandonAudioFocusRequest(focus) }
-            })
-            ttsGotowy = true
+        // onInit bywa wołany z innego wątku – resztę robimy na głównym.
+        handler.post {
+            val t = tts ?: return@post
+            if (status == TextToSpeech.SUCCESS) {
+                val r = t.setLanguage(Locale("pl", "PL"))
+                t.setAudioAttributes(attrs)
+                t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(id: String?) {}
+                    override fun onDone(id: String?) { handler.post { zwolnijFokus() } }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(id: String?) { handler.post { zwolnijFokus() } }
+                    override fun onStop(id: String?, interrupted: Boolean) { handler.post { zwolnijFokus() } }
+                })
+                ttsGotowy = r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
+            }
+            ttsZainicjowany = true
+            if (czekajacyTest) {
+                czekajacyTest = false
+                test()
+            }
         }
+    }
+
+    /** null = jeszcze nie wiadomo (TTS się inicjuje). */
+    val polskiGlos: Boolean? get() = if (ttsZainicjowany) ttsGotowy else null
+
+    private fun wezFokus() {
+        if (aktywne++ == 0) am.requestAudioFocus(focus)
+    }
+
+    private fun zwolnijFokus() {
+        if (aktywne == 0) return
+        if (--aktywne == 0) am.abandonAudioFocusRequest(focus)
     }
 
     fun obsluz(z: Zdarzenie) {
         val tryb = prefs.tryb
         if (tryb == Tryb.CICHY) return
+        val glos = tryb == Tryb.GLOS && ttsGotowy
         if (z is Zdarzenie.ZaSzybko) {
+            // Sygnał co 10 s, głos rzadziej – powtarzane zdanie bardziej rozprasza.
             val now = SystemClock.elapsedRealtime()
-            if (now - ostatnieOstrzezenie < 10_000) return
+            if (now - ostatnieOstrzezenie < if (glos) 30_000 else 10_000) return
             ostatnieOstrzezenie = now
         }
         if (z is Zdarzenie.Wjazd) ostatnieOstrzezenie = SystemClock.elapsedRealtime() // nie ostrzegaj tuż po wjeździe
-        if (tryb == Tryb.GLOS && ttsGotowy) mow(tekst(z)) else sygnal(z)
+        if (glos) mow(tekst(z), przerwij = z !is Zdarzenie.ZaSzybko) else sygnal(z)
     }
 
     fun test() {
-        if (prefs.tryb == Tryb.GLOS && ttsGotowy) mow("Odcinkowy pomiar prędkości, limit 90, 5 kilometrów")
+        if (prefs.tryb == Tryb.GLOS && !ttsZainicjowany) {
+            czekajacyTest = true
+            return
+        }
+        if (prefs.tryb == Tryb.GLOS && ttsGotowy) mow("Odcinkowy pomiar prędkości, limit 90, 5 kilometrów", true)
         else if (prefs.tryb != Tryb.CICHY) graj(listOf(880 to 150, 0 to 80, 1320 to 200))
     }
 
@@ -72,7 +105,7 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
         } else {
             "Odcinkowy pomiar, limit ${z.odcinek.limit}, ${km(z.odcinek.dlugoscM)}"
         }
-        is Zdarzenie.ZaSzybko -> if (z.dozwolonaKmh == null) "Średnia przekroczona" else "Zwolnij, maksymalnie ${z.dozwolonaKmh}"
+        is Zdarzenie.ZaSzybko -> "Zwolnij, maksymalnie ${z.dozwolonaKmh}"
         is Zdarzenie.Zjazd -> when {
             z.zTrasy -> "Opuszczono odcinek"
             z.sredniaKmh != null -> "Koniec odcinka, średnia ${z.sredniaKmh}"
@@ -95,9 +128,13 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
         return "$n $o"
     }
 
-    private fun mow(t: String) {
-        am.requestAudioFocus(focus)
-        tts?.speak(t, TextToSpeech.QUEUE_FLUSH, null, "opp-${SystemClock.elapsedRealtime()}")
+    /** @param przerwij true = komunikat ważniejszy od bieżącego (zapowiedź, wjazd, zjazd). */
+    private fun mow(t: String, przerwij: Boolean) {
+        val e = tts ?: return
+        // Przy QUEUE_FLUSH przerwany komunikat zwolni fokus przez onStop.
+        wezFokus()
+        val q = if (przerwij) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+        if (e.speak(t, q, null, "opp-${SystemClock.elapsedRealtime()}") != TextToSpeech.SUCCESS) zwolnijFokus()
     }
 
     private fun sygnal(z: Zdarzenie) = graj(
@@ -137,17 +174,21 @@ class Powiadamiacz(ctx: Context, private val prefs: Prefs) : TextToSpeech.OnInit
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
         track.write(buf, 0, buf.size)
-        am.requestAudioFocus(focus)
+        wezFokus()
         track.play()
         handler.postDelayed({
             runCatching { track.stop() }
             track.release()
-            am.abandonAudioFocusRequest(focus)
+            zwolnijFokus()
         }, seq.sumOf { it.second } + 150L)
     }
 
     fun zamknij() {
+        ttsGotowy = false
+        tts?.stop()
         tts?.shutdown()
         tts = null
+        if (aktywne > 0) am.abandonAudioFocusRequest(focus)
+        aktywne = 0
     }
 }

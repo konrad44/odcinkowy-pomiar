@@ -149,4 +149,102 @@ class TrackerTest {
         t.onFix(Fix(ms + 11_000, latAt(5_400.0), lon0, 25.0, 0.0))
         assertTrue(t.stan is StanWyspy.Czuwanie)
     }
+
+    @Test
+    fun zlyOdczytTuzZaBramkaNieGubiCzasuWjazdu() {
+        val t = tracker()
+        val v = 25.0
+        var ms = jedz(t, -600.0, -10.0, 90.0)
+        // odczyt 40 m za bramką, ale 45 m w bok i z kursem 60° – nie jest uznany za wjazd
+        val lonBok = lon0 + 45.0 / (111_320.0 * Math.cos(Math.toRadians(lat0)))
+        t.onFix(Fix(ms, latAt(15.0), lonBok, v, 60.0)); ms += 1000
+        val ev = ArrayList<Zdarzenie>()
+        jedz(t, 40.0, 300.0, 90.0, startMs = ms) { _, e -> ev.addAll(e) }
+        assertFalse(ev.filterIsInstance<Zdarzenie.Wjazd>().single().nieznany)
+    }
+
+    @Test
+    fun lukaGpsPrzyKorkuNieKonczyOdcinkaPrzedCzasem() {
+        val t = tracker()
+        val ms = jedz(t, -100.0, 4_500.0, 90.0)
+        // brak GPS; szacunek „minąłby” koniec po ~20 s, a stoimy w korku
+        val ev = ArrayList<Zdarzenie>()
+        for (s in 1..50) ev.addAll(t.onTick(ms + s * 1000L))
+        assertTrue(ev.none { it is Zdarzenie.Zjazd })
+        assertTrue(t.naOdcinku)
+        // GPS wraca – dalej na odcinku, dojeżdżamy do końca normalnie
+        val ev2 = ArrayList<Zdarzenie>()
+        jedz(t, 4_550.0, 5_100.0, 30.0, startMs = ms + 51_000) { _, e -> ev2.addAll(e) }
+        val z = ev2.filterIsInstance<Zdarzenie.Zjazd>().single()
+        assertFalse(z.zTrasy)
+        assertTrue(z.sredniaKmh != null)
+    }
+
+    @Test
+    fun dlugiBrakGpsKonczyOdcinekBezSredniej() {
+        val t = tracker()
+        val ms = jedz(t, -100.0, 4_800.0, 90.0)
+        val ev = ArrayList<Zdarzenie>()
+        for (s in 1..120) ev.addAll(t.onTick(ms + s * 1000L))
+        val z = ev.filterIsInstance<Zdarzenie.Zjazd>().single()
+        assertEquals(null, z.sredniaKmh)
+    }
+
+    @Test
+    fun dlugaLukaGpsNieDajeFalszywegoZjazdu() {
+        // długi odcinek 20 km na północ
+        val dlugi = Odcinek(
+            "long", "Long", "A1", 120, 20_000.0,
+            Polyline((0..20).map { LatLon(latAt(it * 1_000.0), lon0) }),
+        )
+        val t = Tracker(listOf(dlugi)) { 2 }
+        val ms = jedz(t, -100.0, 5_000.0, 120.0)
+        // 70 s bez GPS, potem odczyty ~2,3 km dalej
+        val ev = ArrayList<Zdarzenie>()
+        jedz(t, 7_400.0, 9_000.0, 120.0, startMs = ms + 70_000) { _, e -> ev.addAll(e) }
+        assertTrue(ev.none { it is Zdarzenie.Zjazd })
+        assertTrue(t.naOdcinku)
+    }
+
+    @Test
+    fun zawrocenieKonczyOdcinekIWykrywaPrzeciwny() {
+        val t = tracker()
+        val ms0 = jedz(t, -100.0, 2_000.0, 90.0)
+        val ev = ArrayList<Zdarzenie>()
+        // zawracamy na drugą jezdnię (20 m obok) i jedziemy na południe
+        val v = 25.0
+        var ms = ms0
+        var pos = 2_000.0
+        repeat(20) {
+            ev.addAll(t.onFix(Fix(ms, latAt(pos), lonOpp, v, 180.0)))
+            pos -= v; ms += 1000
+        }
+        assertTrue(ev.filterIsInstance<Zdarzenie.Zjazd>().single().zTrasy)
+        assertEquals("test-s", ev.filterIsInstance<Zdarzenie.Wjazd>().single().odcinek.id)
+    }
+
+    @Test
+    fun dlugiKorekNieDajeCzerwonego() {
+        val t = tracker()
+        var ms = jedz(t, -100.0, 1_000.0, 90.0)
+        val ev = ArrayList<Zdarzenie>()
+        // stoimy 250 s – dłużej niż minimalny czas przejazdu (~205 s)
+        repeat(250) {
+            ev.addAll(t.onFix(Fix(ms, latAt(1_000.0), lon0, 0.0, null)))
+            ms += 1000
+        }
+        val s = t.stan as StanWyspy.NaOdcinku
+        assertEquals(pl.matka.opp.engine.Calc.MAX_KMH, s.dozwolonaKmh)
+        assertEquals(pl.matka.opp.engine.Kolor.NIEBIESKI, s.kolor)
+        assertTrue(ev.none { it is Zdarzenie.ZaSzybko })
+    }
+
+    @Test
+    fun starszyOdczytJestIgnorowany() {
+        val t = tracker()
+        val ms = jedz(t, -100.0, 1_000.0, 90.0)
+        val przed = t.stan
+        assertTrue(t.onFix(Fix(ms - 5_000, latAt(0.0), lon0, 25.0, 0.0)).isEmpty())
+        assertEquals(przed, t.stan)
+    }
 }

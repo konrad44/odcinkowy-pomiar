@@ -67,7 +67,18 @@ class MainActivity : Activity() {
             }
         }
         setContentView(scroll)
-        if (intent?.action == ACTION_URUCHOM) uruchom()
+        if (savedInstanceState == null) obsluzIntent(intent)
+    }
+
+    // singleTop: gdy ekran już istnieje, dotknięcie powiadomienia „Połączono z autem” trafia tutaj.
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        setIntent(i)
+        obsluzIntent(i)
+    }
+
+    private fun obsluzIntent(i: Intent?) {
+        if (i?.action == ACTION_URUCHOM) uruchom()
     }
 
     override fun onResume() {
@@ -106,10 +117,23 @@ class MainActivity : Activity() {
             )
         }
         if (Build.VERSION.SDK_INT >= 29) {
-            uprawnienie("Lokalizacja w tle („Zezwalaj zawsze”)", ma(Manifest.permission.ACCESS_BACKGROUND_LOCATION)) {
-                if (!lok) toast("Najpierw zwykła lokalizacja")
-                else requestPermissions(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), RC_TLO)
+            val tlo = ma(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            uprawnienie("Lokalizacja w tle („Zezwalaj zawsze”)", tlo) {
+                val bg = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                when {
+                    !lok -> toast("Najpierw zwykła lokalizacja")
+                    // Po odmowie Android przestaje pokazywać okno – zostają ustawienia aplikacji.
+                    prefs.pytanoOTlo && !shouldShowRequestPermissionRationale(bg) -> {
+                        toast("Uprawnienia → Lokalizacja → „Zezwalaj zawsze”")
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                    }
+                    else -> {
+                        prefs.pytanoOTlo = true
+                        requestPermissions(arrayOf(bg), RC_TLO)
+                    }
+                }
             }
+            if (!tlo) tekst("Bez „Zezwalaj zawsze” aplikacja nie uruchomi się sama po połączeniu z autem.", 13f)
         }
         val nakladka = Settings.canDrawOverlays(this)
         uprawnienie("Wyświetlanie nad innymi aplikacjami", nakladka) {
@@ -145,6 +169,11 @@ class MainActivity : Activity() {
         // --- Bluetooth auta ---
         sekcja("Samochód (Bluetooth)")
         tekst("Zaznacz urządzenie auta – po połączeniu aplikacja uruchomi się sama, po rozłączeniu wyłączy po 2 min.", 13f)
+        val braki = BluetoothReceiver.brakiDoAutostartu(this)
+        if (braki.isNotEmpty()) {
+            tekst("⚠ Start automatyczny nie zadziała – brakuje: ${braki.joinToString(", ")}. " +
+                "Zamiast tego pojawi się powiadomienie do dotknięcia.", 13f)
+        }
         if (Build.VERSION.SDK_INT >= 31 && !ma(Manifest.permission.BLUETOOTH_CONNECT)) {
             tekst("Najpierw nadaj uprawnienie Bluetooth.", 13f)
         } else {
@@ -184,7 +213,11 @@ class MainActivity : Activity() {
         root.addView(rg)
         root.addView(przycisk("Test dźwięku") {
             val g = glosTest ?: Powiadamiacz(this, prefs).also { glosTest = it }
-            root.postDelayed({ g.test() }, if (glosTest == g) 300 else 800)
+            // test() sam poczeka na gotowość silnika mowy
+            g.test()
+            if (prefs.tryb == Tryb.GLOS) root.postDelayed({
+                if (g.polskiGlos == false) toast("Brak polskiego głosu w syntezatorze mowy – grają sygnały. Zainstaluj polski głos w ustawieniach zamiany tekstu na mowę.")
+            }, 2_000)
         })
 
         // --- Dane ---
@@ -218,9 +251,12 @@ class MainActivity : Activity() {
             return
         }
         val wybrane = prefs.urzadzenia
-        sparowane.sortedBy { it.name ?: it.address }.forEach { dev ->
+        // alias = nazwa nadana na telefonie (np. „Głupia Skoda”), name = nazwa zgłaszana przez auto
+        fun nazwa(dev: android.bluetooth.BluetoothDevice): String? =
+            (if (Build.VERSION.SDK_INT >= 30) dev.alias else null) ?: dev.name
+        sparowane.sortedBy { nazwa(it) ?: it.address }.forEach { dev ->
             root.addView(CheckBox(this).apply {
-                text = "${dev.name ?: "?"}  (${dev.address})"
+                text = "${nazwa(dev) ?: "?"}  (${dev.address})"
                 isChecked = dev.address in wybrane
                 setOnCheckedChangeListener { _, on ->
                     prefs.urzadzenia = if (on) prefs.urzadzenia + dev.address else prefs.urzadzenia - dev.address
