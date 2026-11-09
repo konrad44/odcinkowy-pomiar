@@ -38,7 +38,7 @@ APK jest podpisany stałym kluczem (`app/matka.keystore`), więc kolejne wersje 
 
 - `data/odcinki.json` – 230 kierunków odcinków z OpenStreetMap (relacje `enforcement=average_speed`), trasy z OSRM.
 - Kopia jest wbudowana w APK. Raz w tygodniu (przy starcie usługi) aplikacja pobiera aktualny plik z
-  `https://raw.githubusercontent.com/konrad44/Matka/master/data/odcinki.json` – działa dopiero po scaleniu do `master`.
+  `https://raw.githubusercontent.com/konrad44/odcinkowy-pomiar/master/data/odcinki.json` – działa od razu (repo `odcinkowy-pomiar`, gałąź `master`).
 - Regeneracja danych: `python3 tools/2026-11-08-buduj-odcinki.py` w pustym katalogu, wynik skopiować do `data/`.
 - Dane OSM mogą być niekompletne lub nieaktualne – nowy odcinek dopisujesz do JSON-a (format w specyfikacji).
 

@@ -13,7 +13,7 @@ import java.net.URL
  */
 class OdcinkiRepo(private val ctx: Context) {
     companion object {
-        const val URL_DANYCH = "https://raw.githubusercontent.com/konrad44/Matka/master/data/odcinki.json"
+        const val URL_DANYCH = "https://raw.githubusercontent.com/konrad44/odcinkowy-pomiar/master/data/odcinki.json"
         const val CO_ILE_MS = 7L * 24 * 3600 * 1000
         private const val TAG = "OdcinkiRepo"
     }
